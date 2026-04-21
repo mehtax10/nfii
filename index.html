@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbound Planning Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue: #1a56a0;
+    --blue-dark: #0f3d7a;
+    --blue-light: #e8f0fb;
+    --orange: #e07b10;
+    --orange-dark: #b85e00;
+    --gray-bg: #f0f3f8;
+    --card-bg: #ffffff;
+    --border: #d0dae8;
+    --text: #1a2535;
+    --muted: #6b7e99;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(30,60,120,0.10);
+  }
+
+  body {
+    font-family: 'Barlow', sans-serif;
+    background: var(--gray-bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 32px 0;
+  }
+
+  header {
+    background: linear-gradient(135deg, var(--blue-dark) 0%, var(--blue) 100%);
+    color: #fff;
+    text-align: center;
+    padding: 20px 24px 16px;
+    box-shadow: 0 4px 20px rgba(15,61,122,0.25);
+    position: relative;
+  }
+  header h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px; font-weight: 800;
+    letter-spacing: 1.5px; text-transform: uppercase;
+  }
+  header p { font-size: 13px; opacity: 0.75; margin-top: 3px; }
+
+  .refresh-btn {
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.35);
+    color: #fff; border-radius: 8px; padding: 6px 14px;
+    font-family: 'Barlow', sans-serif; font-size: 12px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: background 0.2s;
+  }
+  .refresh-btn:hover { background: rgba(255,255,255,0.25); }
+  .refresh-btn.spinning .icon { display: inline-block; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .last-updated { font-size: 11px; opacity: 0.6; margin-top: 4px; }
+
+  /* Loading overlay */
+  #loading-overlay {
+    position: fixed; inset: 0; background: rgba(15,40,80,0.55);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 999; color: #fff; gap: 14px;
+  }
+  #loading-overlay.hidden { display: none; }
+  .spinner {
+    width: 44px; height: 44px;
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  #loading-overlay p { font-size: 15px; font-weight: 600; opacity: 0.9; }
+
+  /* Error banner */
+  #error-banner {
+    background: #fdecea; border: 1px solid #f5c6c2;
+    color: #c0392b; border-radius: 8px; padding: 12px 16px;
+    margin: 16px; font-size: 13px; display: none; align-items: center; gap: 10px;
+  }
+  #error-banner.show { display: flex; }
+
+  .main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 0; }
+
+  /* Banners */
+  .banners { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .banner {
+    border-radius: var(--radius); padding: 16px 20px;
+    display: flex; align-items: center; gap: 20px; box-shadow: var(--shadow);
+  }
+  .banner.today   { background: linear-gradient(135deg, #1a56a0, #2771d0); color: #fff; }
+  .banner.tomorrow{ background: linear-gradient(135deg, #c06800, #e07b10); color: #fff; }
+  .banner-icon { font-size: 36px; opacity: 0.9; }
+  .banner-stats { display: flex; gap: 24px; flex: 1; flex-wrap: wrap; }
+  .banner-stat { text-align: center; }
+  .banner-stat .val {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 30px; font-weight: 800; line-height: 1;
+  }
+  .banner-stat .lbl { font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 2px; }
+  .banner-divider { width: 1px; background: rgba(255,255,255,0.3); align-self: stretch; }
+  .banner-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px; opacity: 0.85; margin-bottom: 10px;
+  }
+
+  /* Calendar section */
+  .calendar-section {
+    background: var(--card-bg); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 14px;
+  }
+  .calendar-header { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 10px; }
+  .cal-table-row { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
+
+  .cal { user-select: none; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-head .month-label { font-family: 'Barlow Condensed', sans-serif; font-size: 17px; font-weight: 700; color: var(--blue); }
+  .cal-head button {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    width: 26px; height: 26px; cursor: pointer; font-size: 13px; color: var(--blue);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cal-head button:hover { background: var(--blue-light); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-dow { text-align: center; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; padding: 3px 0; letter-spacing: 0.5px; }
+  .cal-day {
+    text-align: center; font-size: 13px; font-weight: 500;
+    padding: 5px 2px; border-radius: 7px; cursor: pointer; transition: all 0.15s; position: relative;
+  }
+  .cal-day:hover { background: var(--blue-light); color: var(--blue); }
+  .cal-day.empty { cursor: default; }
+  .cal-day.has-data::after {
+    content: ''; display: block; width: 5px; height: 5px;
+    background: var(--orange); border-radius: 50%; margin: 1px auto 0;
+  }
+  .cal-day.today-date { background: var(--blue); color: #fff; font-weight: 700; }
+  .cal-day.today-date::after { background: #fff; }
+  .cal-day.selected { background: var(--orange); color: #fff; font-weight: 700; }
+  .cal-day.selected::after { background: #fff; }
+
+  /* Table */
+  .container-table-title { font-size: 13px; font-weight: 700; color: var(--blue); margin-bottom: 10px; }
+  .container-table-title span { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .container-table-wrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--blue-dark); color: #fff; position: sticky; top: 0; z-index: 1; }
+  thead th { padding: 8px 10px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: var(--blue-light); }
+  tbody td { padding: 7px 10px; white-space: nowrap; }
+  tbody td.client-col { font-weight: 600; max-width: 160px; white-space: normal; line-height: 1.3; }
+  tbody td.mono { font-family: monospace; font-size: 11.5px; color: var(--blue-dark); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  .badge-sku   { background: #e8f0fb; color: #1a56a0; }
+  .badge-lumper{ background: #fff3cd; color: #8a5a00; }
+  .badge-mhe   { background: #e0f2e9; color: #1a8f4e; }
+  .badge-ecm   { background: #f0e0fb; color: #6a1a9a; }
+
+  .no-data { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
+
+  .table-footer { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--muted); font-weight: 500; flex-wrap: wrap; }
+  .table-footer strong { color: var(--text); }
+
+  @media (max-width: 700px) {
+    .banners { grid-template-columns: 1fr; }
+    .cal-table-row { grid-template-columns: 1fr; }
+    .refresh-btn span { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p>Fetching live data from Google Sheets…</p>
+</div>
+
+<!-- Error banner -->
+<div id="error-banner">
+  ⚠️ <span id="error-msg">Could not load data.</span>
+</div>
+
+<header>
+  <h1>🏭 Inbound Planning Dashboard</h1>
+  <p id="header-date">—</p>
+  <div class="last-updated" id="last-updated"></div>
+  <button class="refresh-btn" id="refresh-btn" onclick="loadData()">
+    <span class="icon">↻</span> <span>Refresh</span>
+  </button>
+</header>
+
+<div class="main">
+  <div class="banners">
+    <div class="banner today">
+      <div class="banner-icon">🚛</div>
+      <div style="flex:1">
+        <div class="banner-title">📅 Today Inbound</div>
+        <div class="banner-stats">
+          <div class="banner-stat"><div class="val" id="today-containers">—</div><div class="lbl">Containers</div></div>
+          <div class="banner-divider"></div>
+          <div class="banner-stat"><div class="val" id="today-cartons">—</div><div class="lbl">Cartons Expected</div></div>
+          <div class="banner-divider"></div>
+          <div class="banner-stat"><div class="val" id="today-skus">—</div><div class="lbl">Total SKUs</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="banner tomorrow">
+      <div class="banner-icon">📦</div>
+      <div style="flex:1">
+        <div class="banner-title">🔜 Tomorrow Inbound</div>
+        <div class="banner-stats">
+          <div class="banner-stat"><div class="val" id="tmr-containers">—</div><div class="lbl">Containers</div></div>
+          <div class="banner-divider"></div>
+          <div class="banner-stat"><div class="val" id="tmr-cartons">—</div><div class="lbl">Cartons Expected</div></div>
+          <div class="banner-divider"></div>
+          <div class="banner-stat"><div class="val" id="tmr-skus">—</div><div class="lbl">Total SKUs</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="calendar-section">
+    <div class="calendar-header">📆 Select Date to View Containers</div>
+    <div class="cal-table-row">
+      <div class="cal">
+        <div class="cal-head">
+          <button id="prev-month">&#8249;</button>
+          <div class="month-label" id="cal-month-label">—</div>
+          <button id="next-month">&#8250;</button>
+        </div>
+        <div class="cal-grid" id="cal-grid">
+          <div class="cal-dow">S</div><div class="cal-dow">M</div><div class="cal-dow">T</div>
+          <div class="cal-dow">W</div><div class="cal-dow">T</div><div class="cal-dow">F</div><div class="cal-dow">S</div>
+        </div>
+      </div>
+      <div>
+        <div class="container-table-title">
+          Containers — <span id="selected-date-label">select a date</span>
+        </div>
+        <div class="container-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Container #</th>
+                <th>Client</th>
+                <th>Carrier</th>
+                <th>Cartons</th>
+                <th>SKUs</th>
+                <th>Lumpers</th>
+              </tr>
+            </thead>
+            <tbody id="container-tbody">
+              <tr><td colspan="6" class="no-data">Loading data…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer" id="table-footer" style="display:none">
+          <div>Containers: <strong id="foot-containers">0</strong></div>
+          <div>Cartons: <strong id="foot-cartons">0</strong></div>
+          <div>SKUs: <strong id="foot-skus">—</strong></div>
+          <div>Lumpers: <strong id="foot-lumpers">—</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQUvzCmCjtzLSa_kNLXucvuZnUC1G-a7ergeIvJI6HI-yW0udU1gOXTwHWaeM4Q5Pt_9kaU7eQ9D2fo/pub?output=csv';
+const CSV_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(SHEET_URL);
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+let byDate = {};
+let datesWithData = new Set();
+const NOW = new Date(); NOW.setHours(0,0,0,0);
+const TODAY_STR = dateStr(NOW);
+const TMR_STR   = dateStr(addDays(NOW, 1));
+let calYear  = NOW.getFullYear();
+let calMonth = NOW.getMonth();
+let selectedDate = TODAY_STR;
+
+// ── HELPERS ─────────────────────────────────────────────────────────────────
+function dateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function fmtCartons(c) { return typeof c === 'number' ? c.toLocaleString() : c; }
+function sumCartons(rows) { return rows.reduce((s,r) => s+(typeof r.cartons==='number'?r.cartons:0), 0); }
+function sumSKUs(rows)    { return rows.reduce((s,r) => { const n=parseInt(r.skus); return s+(isNaN(n)?0:n); }, 0); }
+
+function lumperBadge(l) {
+  if (!l || l==='-') return '<span style="color:#aaa">—</span>';
+  const u = l.toUpperCase();
+  if (u.includes('MHE'))    return `<span class="badge badge-mhe">${l}</span>`;
+  if (u.includes('ECM'))    return `<span class="badge badge-ecm">${l}</span>`;
+  if (u.includes('LUMPER')) return `<span class="badge badge-lumper">${l}</span>`;
+  return `<span class="badge badge-lumper">${l}</span>`;
+}
+function skuBadge(s) {
+  if (!s || s==='-') return '<span style="color:#aaa">—</span>';
+  return `<span class="badge badge-sku">${s}</span>`;
+}
+
+// ── CSV PARSER ──────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  // Parse header
+  const headers = splitCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g,''));
+
+  // Find column indices
+  const col = name => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+  const iClient   = col('CLIENT');
+  const iContainer= col('CONTAINER');
+  const iCarrier  = col('CARRIER');
+  const iCartons  = col('CARTONS EXPECTED');
+  const iSKUs     = col('SKUs');
+  const iLumpers  = col('NO OF LUMPERS');
+  const iDate     = col('APPT DATE');
+
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCSVLine(lines[i]).map(c => c.trim().replace(/^"|"$/g,''));
+    if (cells.every(c => !c)) continue;
+
+    const rawDate = cells[iDate] || '';
+    const parsedDate = parseExcelDate(rawDate);
+    if (!parsedDate) continue;
+
+    const rawCartons = cells[iCartons] || '';
+    let cartons = parseFloat(rawCartons.replace(/,/g,''));
+    if (isNaN(cartons)) cartons = rawCartons.trim() || '-';
+
+    records.push({
+      client   : cells[iClient]    || '',
+      container: cells[iContainer] || '',
+      carrier  : cells[iCarrier]   || '',
+      cartons,
+      skus     : cells[iSKUs]      || '-',
+      lumpers  : cells[iLumpers]   || '-',
+      date     : parsedDate,
+    });
+  }
+  return records;
+}
+
+function splitCSVLine(line) {
+  const result = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === ',' && !inQ) { result.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseExcelDate(raw) {
+  if (!raw) return null;
+  raw = raw.trim().replace(/^"|"$/g,'');
+  if (!raw) return null;
+
+  // Already ISO: 2026-04-21
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0,10);
+
+  // Google Sheets often exports as M/D/YYYY or MM/DD/YYYY
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (slash) {
+    const [,m,d,y] = slash;
+    return y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');
+  }
+
+  // Excel serial number
+  const serial = parseInt(raw);
+  if (!isNaN(serial) && serial > 40000 && serial < 60000) {
+    const epoch = new Date(1899,11,30);
+    epoch.setDate(epoch.getDate() + serial);
+    return dateStr(epoch);
+  }
+
+  return null;
+}
+
+// ── LOAD DATA ───────────────────────────────────────────────────────────────
+async function loadData() {
+  showLoading(true);
+  hideError();
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+
+  try {
+    const res = await fetch(CSV_URL + '&cachebust=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const records = parseCSV(text);
+
+    if (!records.length) throw new Error('No data rows found. Check the sheet is published correctly.');
+
+    // Index by date
+    byDate = {};
+    records.forEach(r => {
+      if (!byDate[r.date]) byDate[r.date] = [];
+      byDate[r.date].push(r);
+    });
+    datesWithData = new Set(Object.keys(byDate));
+
+    // Update last-updated
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + new Date().toLocaleTimeString();
+
+    updateBanners();
+    renderCalendar();
+    renderTable();
+
+  } catch(err) {
+    showError('Failed to fetch data. Check your internet connection and make sure the sheet is published to the web.');
+    console.error(err);
+  } finally {
+    showLoading(false);
+    btn.classList.remove('spinning');
+  }
+}
+
+function showLoading(v) { document.getElementById('loading-overlay').classList.toggle('hidden', !v); }
+function showError(msg)  { const b=document.getElementById('error-banner'); b.classList.add('show'); document.getElementById('error-msg').textContent=msg; }
+function hideError()     { document.getElementById('error-banner').classList.remove('show'); }
+
+// ── BANNERS ─────────────────────────────────────────────────────────────────
+function updateBanners() {
+  const t = byDate[TODAY_STR] || [];
+  const m = byDate[TMR_STR]   || [];
+  document.getElementById('today-containers').textContent = t.length || '0';
+  document.getElementById('today-cartons').textContent    = sumCartons(t).toLocaleString();
+  document.getElementById('today-skus').textContent       = sumSKUs(t) || '0';
+  document.getElementById('tmr-containers').textContent   = m.length || '0';
+  document.getElementById('tmr-cartons').textContent      = sumCartons(m).toLocaleString();
+  document.getElementById('tmr-skus').textContent         = sumSKUs(m) || '0';
+}
+
+// ── CALENDAR ─────────────────────────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderCalendar() {
+  document.getElementById('cal-month-label').textContent = MONTHS[calMonth] + ' ' + calYear;
+  const grid = document.getElementById('cal-grid');
+  while (grid.children.length > 7) grid.removeChild(grid.lastChild);
+
+  const first = new Date(calYear, calMonth, 1).getDay();
+  const days  = new Date(calYear, calMonth+1, 0).getDate();
+
+  for (let i=0; i<first; i++) {
+    const e=document.createElement('div'); e.className='cal-day empty'; grid.appendChild(e);
+  }
+  for (let d=1; d<=days; d++) {
+    const ds = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const e  = document.createElement('div');
+    e.className = 'cal-day';
+    e.textContent = d;
+    if (ds===TODAY_STR)    e.classList.add('today-date');
+    if (ds===selectedDate) e.classList.add('selected');
+    if (datesWithData.has(ds)) e.classList.add('has-data');
+    e.addEventListener('click', () => { selectedDate=ds; renderCalendar(); renderTable(); });
+    grid.appendChild(e);
+  }
+}
+
+document.getElementById('prev-month').addEventListener('click', () => {
+  calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderCalendar();
+});
+document.getElementById('next-month').addEventListener('click', () => {
+  calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderCalendar();
+});
+
+// ── TABLE ────────────────────────────────────────────────────────────────────
+function renderTable() {
+  const rows   = byDate[selectedDate] || [];
+  const label  = document.getElementById('selected-date-label');
+  const tbody  = document.getElementById('container-tbody');
+  const footer = document.getElementById('table-footer');
+
+  const [y,m,d] = selectedDate.split('-');
+  const dObj = new Date(+y,+m-1,+d);
+  label.textContent = dObj.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="no-data">No containers scheduled for this date</td></tr>';
+    footer.style.display='none';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="mono">${(r.container||'').toUpperCase()}</td>
+      <td class="client-col">${r.client}</td>
+      <td>${r.carrier}</td>
+      <td><strong>${fmtCartons(r.cartons)}</strong></td>
+      <td>${skuBadge(r.skus)}</td>
+      <td>${lumperBadge(r.lumpers)}</td>
+    </tr>
+  `).join('');
+
+  footer.style.display='flex';
+  document.getElementById('foot-containers').textContent = rows.length;
+  document.getElementById('foot-cartons').textContent    = sumCartons(rows).toLocaleString();
+  document.getElementById('foot-skus').textContent       = sumSKUs(rows) || '—';
+  const lumpers = [...new Set(rows.map(r=>r.lumpers).filter(l=>l&&l!=='-'))];
+  document.getElementById('foot-lumpers').textContent    = lumpers.length ? lumpers.join(', ') : '—';
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('header-date').textContent =
+  NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+loadData(); // fetch on open
+
+// Auto-refresh every 5 minutes
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
