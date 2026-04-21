@@ -275,8 +275,9 @@
 
 <script>
 // ── CONFIG ─────────────────────────────────────────────────────────────────
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQUvzCmCjtzLSa_kNLXucvuZnUC1G-a7ergeIvJI6HI-yW0udU1gOXTwHWaeM4Q5Pt_9kaU7eQ9D2fo/pub?output=csv';
-const CSV_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(SHEET_URL);
+// Google Sheets published CSV — fetched directly (works from GitHub Pages)
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQUvzCmCjtzLSa_kNLXucvuZnUC1G-a7ergeIvJI6HI-yW0udU1gOXTwHWaeM4Q5Pt_9kaU7eQ9D2fo/pub?gid=416962658&single=true&output=csv';
+
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 let byDate = {};
@@ -400,14 +401,13 @@ async function loadData() {
   btn.classList.add('spinning');
 
   try {
-    const res = await fetch(CSV_URL + '&cachebust=' + Date.now());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await fetch(SHEET_URL + '&cachebust=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     const records = parseCSV(text);
 
     if (!records.length) throw new Error('No data rows found. Check the sheet is published correctly.');
 
-    // Index by date
     byDate = {};
     records.forEach(r => {
       if (!byDate[r.date]) byDate[r.date] = [];
@@ -415,7 +415,6 @@ async function loadData() {
     });
     datesWithData = new Set(Object.keys(byDate));
 
-    // Update last-updated
     document.getElementById('last-updated').textContent =
       'Last updated: ' + new Date().toLocaleTimeString();
 
@@ -424,7 +423,7 @@ async function loadData() {
     renderTable();
 
   } catch(err) {
-    showError('Failed to fetch data. Check your internet connection and make sure the sheet is published to the web.');
+    showError('Failed to fetch data: ' + err.message);
     console.error(err);
   } finally {
     showLoading(false);
