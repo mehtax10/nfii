@@ -61,7 +61,6 @@
 
   .last-updated { font-size: 11px; opacity: 0.6; margin-top: 4px; }
 
-  /* Loading overlay */
   #loading-overlay {
     position: fixed; inset: 0; background: rgba(15,40,80,0.55);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -76,17 +75,18 @@
   }
   #loading-overlay p { font-size: 15px; font-weight: 600; opacity: 0.9; }
 
-  /* Error banner */
   #error-banner {
     background: #fdecea; border: 1px solid #f5c6c2;
     color: #c0392b; border-radius: 8px; padding: 12px 16px;
     margin: 16px; font-size: 13px; display: none; align-items: center; gap: 10px;
+    flex-direction: column; align-items: flex-start;
   }
   #error-banner.show { display: flex; }
+  #error-banner details { margin-top: 8px; font-size: 12px; color: #a93226; }
+  #error-banner summary { cursor: pointer; font-weight: 600; }
 
   .main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 0; }
 
-  /* Banners */
   .banners { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
   .banner {
     border-radius: var(--radius); padding: 16px 20px;
@@ -109,7 +109,6 @@
     letter-spacing: 0.8px; opacity: 0.85; margin-bottom: 10px;
   }
 
-  /* Calendar section */
   .calendar-section {
     background: var(--card-bg); border-radius: var(--radius);
     box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 14px;
@@ -143,7 +142,6 @@
   .cal-day.selected { background: var(--orange); color: #fff; font-weight: 700; }
   .cal-day.selected::after { background: #fff; }
 
-  /* Table */
   .container-table-title { font-size: 13px; font-weight: 700; color: var(--blue); margin-bottom: 10px; }
   .container-table-title span { font-weight: 400; color: var(--muted); font-size: 12px; }
   .container-table-wrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
@@ -165,8 +163,32 @@
 
   .no-data { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
 
+  /* Debug panel */
+  #debug-panel {
+    background: #1a2535; color: #a8c0d6; border-radius: 8px;
+    padding: 12px 16px; margin: 0 0 14px; font-size: 11px; font-family: monospace;
+    display: none; max-height: 160px; overflow-y: auto;
+  }
+  #debug-panel.show { display: block; }
+  #debug-panel .dbg-line { margin: 2px 0; }
+  #debug-panel .dbg-ok  { color: #4caf50; }
+  #debug-panel .dbg-warn{ color: #ff9800; }
+  #debug-panel .dbg-err { color: #f44336; }
+
+  .debug-toggle {
+    font-size: 11px; color: var(--muted); cursor: pointer;
+    text-decoration: underline; margin-bottom: 8px; display: inline-block;
+  }
+
   .table-footer { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--muted); font-weight: 500; flex-wrap: wrap; }
   .table-footer strong { color: var(--text); }
+
+  .raw-preview {
+    background: #f8f9fc; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px; font-size: 11px; font-family: monospace; color: var(--muted);
+    white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto;
+    margin-top: 8px;
+  }
 
   @media (max-width: 700px) {
     .banners { grid-template-columns: 1fr; }
@@ -177,15 +199,17 @@
 </head>
 <body>
 
-<!-- Loading overlay -->
 <div id="loading-overlay">
   <div class="spinner"></div>
   <p>Fetching live data from Google Sheets…</p>
 </div>
 
-<!-- Error banner -->
 <div id="error-banner">
-  ⚠️ <span id="error-msg">Could not load data.</span>
+  <div>⚠️ <strong id="error-msg">Could not load data.</strong></div>
+  <details>
+    <summary>Troubleshooting tips</summary>
+    <div id="error-detail"></div>
+  </details>
 </div>
 
 <header>
@@ -198,6 +222,7 @@
 </header>
 
 <div class="main">
+
   <div class="banners">
     <div class="banner today">
       <div class="banner-icon">🚛</div>
@@ -226,6 +251,9 @@
       </div>
     </div>
   </div>
+
+  <span class="debug-toggle" onclick="toggleDebug()">🔧 Show debug log</span>
+  <div id="debug-panel"></div>
 
   <div class="calendar-section">
     <div class="calendar-header">📆 Select Date to View Containers</div>
@@ -274,10 +302,9 @@
 </div>
 
 <script>
-// ── CONFIG ─────────────────────────────────────────────────────────────────
-// Google Sheets published CSV — fetched directly (works from GitHub Pages)
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQUvzCmCjtzLSa_kNLXucvuZnUC1G-a7ergeIvJI6HI-yW0udU1gOXTwHWaeM4Q5Pt_9kaU7eQ9D2fo/pub?gid=416962658&single=true&output=csv';
-
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+// ✅ UPDATED: Your correct Google Sheets published CSV URL
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvIG8-n6ve1VafbE7_kSRsrTj2LLttWgHhXP_NhTnSKmIXcIC6veOIUsmJ8cRN4TJA_ctSbdMhBOlH/pub?output=csv';
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 let byDate = {};
@@ -288,6 +315,7 @@ const TMR_STR   = dateStr(addDays(NOW, 1));
 let calYear  = NOW.getFullYear();
 let calMonth = NOW.getMonth();
 let selectedDate = TODAY_STR;
+let debugLines = [];
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
 function dateStr(d) {
@@ -298,12 +326,31 @@ function fmtCartons(c) { return typeof c === 'number' ? c.toLocaleString() : c; 
 function sumCartons(rows) { return rows.reduce((s,r) => s+(typeof r.cartons==='number'?r.cartons:0), 0); }
 function sumSKUs(rows)    { return rows.reduce((s,r) => { const n=parseInt(r.skus); return s+(isNaN(n)?0:n); }, 0); }
 
+function dbg(msg, type='') {
+  debugLines.push({msg, type});
+  const panel = document.getElementById('debug-panel');
+  if (panel.classList.contains('show')) renderDebug();
+  console.log('[Dashboard]', msg);
+}
+function renderDebug() {
+  const panel = document.getElementById('debug-panel');
+  panel.innerHTML = debugLines.map(l =>
+    `<div class="dbg-line ${l.type?'dbg-'+l.type:''}">${escHtml(l.msg)}</div>`
+  ).join('');
+  panel.scrollTop = panel.scrollHeight;
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toggleDebug() {
+  const panel = document.getElementById('debug-panel');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) renderDebug();
+}
+
 function lumperBadge(l) {
   if (!l || l==='-') return '<span style="color:#aaa">—</span>';
   const u = l.toUpperCase();
   if (u.includes('MHE'))    return `<span class="badge badge-mhe">${l}</span>`;
   if (u.includes('ECM'))    return `<span class="badge badge-ecm">${l}</span>`;
-  if (u.includes('LUMPER')) return `<span class="badge badge-lumper">${l}</span>`;
   return `<span class="badge badge-lumper">${l}</span>`;
 }
 function skuBadge(s) {
@@ -313,44 +360,64 @@ function skuBadge(s) {
 
 // ── CSV PARSER ──────────────────────────────────────────────────────────────
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
+  const lines = text.trim().split(/\r?\n/);
+  dbg(`CSV: ${lines.length} raw lines`, 'ok');
   if (lines.length < 2) return [];
 
-  // Parse header
-  const headers = splitCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g,''));
+  const headers = splitCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g,'').toLowerCase());
+  dbg('Headers found: ' + headers.join(' | '));
 
-  // Find column indices
-  const col = name => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
-  const iClient   = col('CLIENT');
-  const iContainer= col('CONTAINER');
-  const iCarrier  = col('CARRIER');
-  const iCartons  = col('CARTONS EXPECTED');
-  const iSKUs     = col('SKUs');
-  const iLumpers  = col('NO OF LUMPERS');
-  const iDate     = col('APPT DATE');
+  // Flexible column matching — handles different header names
+  function col(...names) {
+    for (const name of names) {
+      const i = headers.findIndex(h => h.includes(name.toLowerCase()));
+      if (i !== -1) return i;
+    }
+    return -1;
+  }
+
+  const iClient    = col('client');
+  const iContainer = col('container');
+  const iCarrier   = col('carrier');
+  const iCartons   = col('carton');          // matches "cartons expected", "cartons", etc.
+  const iSKUs      = col('sku');
+  const iLumpers   = col('lumper');
+  const iDate      = col('appt date','date','appt','appointment');
+
+  dbg(`Col indices — date:${iDate} client:${iClient} container:${iContainer} carrier:${iCarrier} cartons:${iCartons} skus:${iSKUs} lumpers:${iLumpers}`);
+
+  if (iDate === -1) {
+    dbg('⚠️ Could not find a date column. Check your sheet headers.', 'warn');
+  }
 
   const records = [];
+  let skipped = 0;
   for (let i = 1; i < lines.length; i++) {
     const cells = splitCSVLine(lines[i]).map(c => c.trim().replace(/^"|"$/g,''));
     if (cells.every(c => !c)) continue;
 
-    const rawDate = cells[iDate] || '';
+    const rawDate = iDate >= 0 ? (cells[iDate] || '') : '';
     const parsedDate = parseExcelDate(rawDate);
-    if (!parsedDate) continue;
+    if (!parsedDate) { skipped++; continue; }
 
-    const rawCartons = cells[iCartons] || '';
+    const rawCartons = iCartons >= 0 ? (cells[iCartons] || '') : '';
     let cartons = parseFloat(rawCartons.replace(/,/g,''));
     if (isNaN(cartons)) cartons = rawCartons.trim() || '-';
 
     records.push({
-      client   : cells[iClient]    || '',
-      container: cells[iContainer] || '',
-      carrier  : cells[iCarrier]   || '',
+      client   : iClient    >= 0 ? cells[iClient]    : '',
+      container: iContainer >= 0 ? cells[iContainer] : '',
+      carrier  : iCarrier   >= 0 ? cells[iCarrier]   : '',
       cartons,
-      skus     : cells[iSKUs]      || '-',
-      lumpers  : cells[iLumpers]   || '-',
+      skus     : iSKUs      >= 0 ? (cells[iSKUs]      || '-') : '-',
+      lumpers  : iLumpers   >= 0 ? (cells[iLumpers]   || '-') : '-',
       date     : parsedDate,
     });
+  }
+  dbg(`Parsed ${records.length} records, skipped ${skipped} rows (no valid date)`, records.length ? 'ok' : 'warn');
+  if (records.length) {
+    const sample = records[0];
+    dbg(`Sample row: date=${sample.date} client="${sample.client}" cartons=${sample.cartons}`);
   }
   return records;
 }
@@ -372,17 +439,29 @@ function parseExcelDate(raw) {
   raw = raw.trim().replace(/^"|"$/g,'');
   if (!raw) return null;
 
-  // Already ISO: 2026-04-21
+  // ISO: 2026-04-21
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0,10);
 
-  // Google Sheets often exports as M/D/YYYY or MM/DD/YYYY
+  // M/D/YYYY or MM/DD/YYYY
   const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (slash) {
     const [,m,d,y] = slash;
     return y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');
   }
 
-  // Excel serial number
+  // D-Mon-YY or D-Mon-YYYY  e.g. "21-Apr-26" or "21-Apr-2026"
+  const monStr = raw.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{2,4})$/);
+  if (monStr) {
+    const months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+    const mon = months[monStr[2].toLowerCase()];
+    if (mon) {
+      let yr = monStr[3];
+      if (yr.length === 2) yr = (parseInt(yr) > 50 ? '19' : '20') + yr;
+      return yr+'-'+mon+'-'+monStr[1].padStart(2,'0');
+    }
+  }
+
+  // Excel serial number (date-only serials)
   const serial = parseInt(raw);
   if (!isNaN(serial) && serial > 40000 && serial < 60000) {
     const epoch = new Date(1899,11,30);
@@ -395,45 +474,104 @@ function parseExcelDate(raw) {
 
 // ── LOAD DATA ───────────────────────────────────────────────────────────────
 async function loadData() {
+  debugLines = [];
   showLoading(true);
   hideError();
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning');
 
+  dbg('Fetching: ' + SHEET_URL);
+
+  // Try direct fetch first; if CORS blocks, try a proxy
+  let text = null;
+  let fetchError = null;
+
+  // Attempt 1: direct (works fine on GitHub Pages — same origin fetch is not restricted)
   try {
-    const res = await fetch(SHEET_URL + '&cachebust=' + Date.now());
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
-    const records = parseCSV(text);
-
-    if (!records.length) throw new Error('No data rows found. Check the sheet is published correctly.');
-
-    byDate = {};
-    records.forEach(r => {
-      if (!byDate[r.date]) byDate[r.date] = [];
-      byDate[r.date].push(r);
+    const res = await fetch(SHEET_URL + '&cachebust=' + Date.now(), {
+      mode: 'cors',
+      cache: 'no-store'
     });
-    datesWithData = new Set(Object.keys(byDate));
-
-    document.getElementById('last-updated').textContent =
-      'Last updated: ' + new Date().toLocaleTimeString();
-
-    updateBanners();
-    renderCalendar();
-    renderTable();
-
+    dbg(`HTTP ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+    text = await res.text();
+    dbg(`Received ${text.length} bytes`, 'ok');
   } catch(err) {
-    showError('Failed to fetch data: ' + err.message);
-    console.error(err);
-  } finally {
+    fetchError = err;
+    dbg('Direct fetch failed: ' + err.message, 'err');
+
+    // Attempt 2: allorigins proxy (works if CORS is blocked, e.g. local file:// testing)
+    try {
+      dbg('Trying allorigins proxy…');
+      const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(SHEET_URL + '&cachebust=' + Date.now());
+      const res2 = await fetch(proxy);
+      const json = await res2.json();
+      text = json.contents;
+      dbg(`Proxy returned ${text ? text.length : 0} bytes`, text ? 'ok' : 'err');
+      fetchError = null;
+    } catch(err2) {
+      dbg('Proxy also failed: ' + err2.message, 'err');
+    }
+  }
+
+  if (!text) {
+    showError(
+      'Could not fetch sheet data. ' + (fetchError ? fetchError.message : ''),
+      `Make sure your Google Sheet is published to the web as CSV:\n` +
+      `File → Share → Publish to web → choose the correct sheet → CSV → Publish.\n\n` +
+      `Then copy the link and update SHEET_URL in the HTML file.`
+    );
     showLoading(false);
     btn.classList.remove('spinning');
+    renderDebug();
+    return;
   }
+
+  // Show first 300 chars of raw data in debug
+  dbg('Raw preview: ' + text.slice(0, 300).replace(/\n/g, ' ↵ '));
+
+  const records = parseCSV(text);
+
+  if (!records.length) {
+    showError(
+      'Sheet was fetched but no valid rows were found.',
+      'Check that:\n1. Your sheet has a header row with column names like CLIENT, CONTAINER, APPT DATE, CARTONS EXPECTED, SKUs, NO OF LUMPERS.\n2. The date column contains recognisable dates (e.g. 4/21/2026 or 2026-04-21).\n\nOpen "Show debug log" for details.'
+    );
+    showLoading(false);
+    btn.classList.remove('spinning');
+    renderDebug();
+    return;
+  }
+
+  byDate = {};
+  records.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = [];
+    byDate[r.date].push(r);
+  });
+  datesWithData = new Set(Object.keys(byDate));
+  dbg(`Dates with data: ${[...datesWithData].slice(0,10).join(', ')}`, 'ok');
+
+  document.getElementById('last-updated').textContent =
+    'Last updated: ' + new Date().toLocaleTimeString();
+
+  updateBanners();
+  renderCalendar();
+  renderTable();
+
+  showLoading(false);
+  btn.classList.remove('spinning');
+  renderDebug();
 }
 
 function showLoading(v) { document.getElementById('loading-overlay').classList.toggle('hidden', !v); }
-function showError(msg)  { const b=document.getElementById('error-banner'); b.classList.add('show'); document.getElementById('error-msg').textContent=msg; }
-function hideError()     { document.getElementById('error-banner').classList.remove('show'); }
+
+function showError(msg, detail='') {
+  const b = document.getElementById('error-banner');
+  b.classList.add('show');
+  document.getElementById('error-msg').textContent = msg;
+  document.getElementById('error-detail').textContent = detail;
+}
+function hideError() { document.getElementById('error-banner').classList.remove('show'); }
 
 // ── BANNERS ─────────────────────────────────────────────────────────────────
 function updateBanners() {
@@ -500,9 +638,9 @@ function renderTable() {
 
   tbody.innerHTML = rows.map(r => `
     <tr>
-      <td class="mono">${(r.container||'').toUpperCase()}</td>
-      <td class="client-col">${r.client}</td>
-      <td>${r.carrier}</td>
+      <td class="mono">${escHtml((r.container||'').toUpperCase())}</td>
+      <td class="client-col">${escHtml(r.client)}</td>
+      <td>${escHtml(r.carrier)}</td>
       <td><strong>${fmtCartons(r.cartons)}</strong></td>
       <td>${skuBadge(r.skus)}</td>
       <td>${lumperBadge(r.lumpers)}</td>
@@ -518,13 +656,10 @@ function renderTable() {
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
-
 document.getElementById('header-date').textContent =
   NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-loadData(); // fetch on open
-
-// Auto-refresh every 5 minutes
+loadData();
 setInterval(loadData, 5 * 60 * 1000);
 </script>
 </body>
