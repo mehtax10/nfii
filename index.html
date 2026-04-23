@@ -364,13 +364,17 @@ function parseCSV(text) {
   dbg(`CSV: ${lines.length} raw lines`, 'ok');
   if (lines.length < 2) return [];
 
-  const headers = splitCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g,'').toLowerCase());
+  const headers = splitCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g,'').replace(/[\r\n]+/g,' ').toLowerCase());
   dbg('Headers found: ' + headers.join(' | '));
 
   // Flexible column matching — handles different header names
+  // Clean headers: remove line breaks, extra spaces, special chars for matching
+  const cleanHeaders = headers.map(h => h.replace(/[\r\n]+/g,' ').replace(/\s+/g,' ').trim().toLowerCase());
+
   function col(...names) {
     for (const name of names) {
-      const i = headers.findIndex(h => h.includes(name.toLowerCase()));
+      const n = name.toLowerCase();
+      const i = cleanHeaders.findIndex(h => h.includes(n));
       if (i !== -1) return i;
     }
     return -1;
@@ -379,10 +383,10 @@ function parseCSV(text) {
   const iClient    = col('client');
   const iContainer = col('container');
   const iCarrier   = col('carrier');
-  const iCartons   = col('carton');          // matches "cartons expected", "cartons", etc.
-  const iSKUs      = col('sku');
-  const iLumpers   = col('lumper');
-  const iDate      = col('appt date','date','appt','appointment');
+  const iCartons   = col('cartons expected','carton');
+  const iSKUs      = col('skus','sku');
+  const iLumpers   = col('no of lumper','lumper');
+  const iDate      = col('appt date & time','appt date','appt','appointment date','date');
 
   dbg(`Col indices — date:${iDate} client:${iClient} container:${iContainer} carrier:${iCarrier} cartons:${iCartons} skus:${iSKUs} lumpers:${iLumpers}`);
 
@@ -436,8 +440,12 @@ function splitCSVLine(line) {
 
 function parseExcelDate(raw) {
   if (!raw) return null;
-  raw = raw.trim().replace(/^"|"$/g,'');
+  raw = raw.trim().replace(/^"|"$/g,'').replace(/[\r\n]+/g,' ');
   if (!raw) return null;
+
+  // Strip time portion if present (e.g. "12/31/2025 9:00 AM" → "12/31/2025")
+  raw = raw.replace(/\s+\d{1,2}:\d{2}(\s*(AM|PM))?$/i, '').trim();
+  raw = raw.replace(/\s+\d{1,2}:\d{2}(:\d{2})?$/, '').trim();
 
   // ISO: 2026-04-21
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0,10);
@@ -461,7 +469,7 @@ function parseExcelDate(raw) {
     }
   }
 
-  // Excel serial number (date-only serials)
+  // Excel serial number
   const serial = parseInt(raw);
   if (!isNaN(serial) && serial > 40000 && serial < 60000) {
     const epoch = new Date(1899,11,30);
