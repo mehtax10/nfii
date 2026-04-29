@@ -371,7 +371,7 @@ function renderCalendar(){
     if(dstr===TODAY_STR)e.classList.add('today-date');
     if(dstr===selectedDate)e.classList.add('selected');
     if(datesWithData.has(dstr))e.classList.add('has-data');
-    (function(ds){e.addEventListener('click',function(){selectedDate=ds;renderCalendar();renderTable();});})(dstr);
+    (function(ds){e.addEventListener('click',function(){selectedDate=ds;renderCalendar();renderTable();renderDock();});})(dstr);
     grid.appendChild(e);
   }
 }
@@ -401,7 +401,9 @@ function renderTable(){
 function renderDock(){
   var grid=document.getElementById('dock-grid');
   var dateEl=document.getElementById('dock-date');
-  dateEl.innerHTML='<strong>'+NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</strong>';
+  var dparts=selectedDate.split('-');
+  var dDisp=new Date(+dparts[0],+dparts[1]-1,+dparts[2]).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  dateEl.innerHTML='<strong>'+dDisp+'</strong>';
 
   // Filter by DATE DECLARED = today
   var todayRows=rawRecords.filter(function(row){
@@ -409,7 +411,7 @@ function renderDock(){
   });
 
   if(!todayRows.length){
-    grid.innerHTML='<div class="dock-empty">No containers declared for today.</div>';
+    grid.innerHTML='<div class="dock-empty">No containers declared for this date.</div>';
     return;
   }
 
