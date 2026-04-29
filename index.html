@@ -154,7 +154,7 @@
         <div class="container-table-title">Containers — <span id="selected-date-label">select a date</span></div>
         <div class="container-table-wrap">
           <table>
-            <thead><tr><th>Container #</th><th>Client</th><th>Carrier</th><th>Cartons</th><th>SKUs</th><th>Handled By</th></tr></thead>
+            <thead><tr><th>Container #</th><th>Client</th><th>Carrier</th><th>Cartons</th><th>SKUs</th><th>Handled By</th><th>Status</th></tr></thead>
             <tbody id="container-tbody"><tr><td colspan="6" class="no-data">Loading…</td></tr></tbody>
           </table>
         </div>
@@ -371,7 +371,7 @@ function renderCalendar(){
     if(dstr===TODAY_STR)e.classList.add('today-date');
     if(dstr===selectedDate)e.classList.add('selected');
     if(datesWithData.has(dstr))e.classList.add('has-data');
-    (function(ds){e.addEventListener('click',function(){selectedDate=ds;renderCalendar();renderTable();renderDock();});})(dstr);
+    (function(ds){e.addEventListener('click',function(){selectedDate=ds;renderCalendar();renderTable();});})(dstr);
     grid.appendChild(e);
   }
 }
@@ -385,9 +385,27 @@ function renderTable(){
   var footer=document.getElementById('table-footer');
   var parts=selectedDate.split('-');
   document.getElementById('selected-date-label').textContent=new Date(+parts[0],+parts[1]-1,+parts[2]).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  if(!rows.length){tbody.innerHTML='<tr><td colspan="6" class="no-data">No containers scheduled for this date</td></tr>';footer.style.display='none';return;}
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="7" class="no-data">No containers scheduled for this date</td></tr>';footer.style.display='none';return;}
+  // Build a lookup of raw rows by container number for status
+  var rawByContainer={};
+  rawRecords.forEach(function(row){
+    var cont=(row[C_CONTAINER]||'').toUpperCase().trim();
+    if(cont) rawByContainer[cont]=row;
+  });
+
   tbody.innerHTML=rows.map(function(r){
-    return '<tr><td class="mono">'+esc(r.container.toUpperCase())+'</td><td class="client-col">'+esc(r.client)+'</td><td>'+esc(r.carrier)+'</td><td><strong>'+(typeof r.cartons==='number'?r.cartons.toLocaleString():r.cartons)+'</strong></td><td>'+skuBadge(r.skus)+'</td><td>'+handlerBadge(r.lumpers)+'</td></tr>';
+    var raw=rawByContainer[r.container.toUpperCase().trim()]||[];
+    var dateRecv = raw.length ? parseDate(raw[C_DATE_RECV]||'') : null;
+    var datePut  = raw.length ? parseDate(raw[C_DATE_PUT] ||'') : null;
+    var statusCell;
+    if(datePut){
+      statusCell='<span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#10003; Completed</span>';
+    } else if(dateRecv){
+      statusCell='<span style="background:#cce5ff;color:#004085;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#128229; Received</span>';
+    } else {
+      statusCell='<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#9881; Working</span>';
+    }
+    return '<tr><td class="mono">'+esc(r.container.toUpperCase())+'</td><td class="client-col">'+esc(r.client)+'</td><td>'+esc(r.carrier)+'</td><td><strong>'+(typeof r.cartons==='number'?r.cartons.toLocaleString():r.cartons)+'</strong></td><td>'+skuBadge(r.skus)+'</td><td>'+handlerBadge(r.lumpers)+'</td><td>'+statusCell+'</td></tr>';
   }).join('');
   footer.style.display='flex';
   document.getElementById('foot-containers').textContent=rows.length;
@@ -401,9 +419,7 @@ function renderTable(){
 function renderDock(){
   var grid=document.getElementById('dock-grid');
   var dateEl=document.getElementById('dock-date');
-  var dparts=selectedDate.split('-');
-  var dDisp=new Date(+dparts[0],+dparts[1]-1,+dparts[2]).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  dateEl.innerHTML='<strong>'+dDisp+'</strong>';
+  dateEl.innerHTML='<strong>'+NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</strong>';
 
   // Filter by DATE DECLARED = today
   var todayRows=rawRecords.filter(function(row){
@@ -411,7 +427,7 @@ function renderDock(){
   });
 
   if(!todayRows.length){
-    grid.innerHTML='<div class="dock-empty">No containers declared for this date.</div>';
+    grid.innerHTML='<div class="dock-empty">No containers declared for today.</div>';
     return;
   }
 
