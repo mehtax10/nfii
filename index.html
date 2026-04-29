@@ -201,6 +201,8 @@ var C_DATE_DECL = 10;  // DATE DECLARED
 var C_LUMPERS   = 11;  // NO OF LUMPERS
 var C_DOOR      = 4;   // DOOR#
 var C_NOTES     = 19;  // NOTES
+var C_DATE_RECV = 17;  // DATE RECEIVED
+var C_DATE_PUT  = 18;  // DATE PUTAWAY
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 var byDate = {};
@@ -417,6 +419,7 @@ function renderDock(){
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">SKUs</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Door #</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Handled By</th>'
+    +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Status</th>'
     +'</tr></thead>';
 
   var tbody='<tbody>'+todayRows.map(function(row){
@@ -426,6 +429,18 @@ function renderDock(){
     var door      = row[C_DOOR]      ||'—';
     var lumper    = row[C_LUMPERS]   ||'—';
     var notes     = row[C_NOTES]     ||'';
+
+    // Status logic
+    var dateRecv  = parseDate(row[C_DATE_RECV]||'');
+    var datePut   = parseDate(row[C_DATE_PUT] ||'');
+    var statusCell;
+    if(datePut){
+      statusCell='<span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Completed</span>';
+    } else if(dateRecv){
+      statusCell='<span style="background:#cce5ff;color:#004085;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">📥 Received</span>';
+    } else {
+      statusCell='<span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚙️ Working</span>';
+    }
 
     var cartons   = extractCartons(cartonRaw);
     var ctnsDisp  = cartons!==null ? cartons.toLocaleString() : (cartonRaw||'—');
@@ -444,6 +459,7 @@ function renderDock(){
       +'<td style="padding:8px 10px;">'+skuCell+'</td>'
       +'<td style="padding:8px 10px;">'+doorCell+'</td>'
       +'<td style="padding:8px 10px;">'+handlerBadge(lumper)+commentBtn+'</td>'
+      +'<td style="padding:8px 10px;">'+statusCell+'</td>'
       +'</tr>';
   }).join('')+'</tbody>';
 
