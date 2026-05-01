@@ -77,12 +77,10 @@
   .no-data { text-align:center; color:var(--muted); padding:24px; font-size:14px; }
   .table-footer { display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--muted); font-weight:500; flex-wrap:wrap; }
   .table-footer strong { color:var(--text); }
-  /* Dock Planning */
   .dock-section { background:var(--card-bg); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px; margin-bottom:14px; }
   .dock-heading { font-family:'Barlow Condensed',sans-serif; font-size:20px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:var(--blue-dark); margin-bottom:4px; }
   .dock-date { font-size:13px; font-weight:700; color:var(--orange); margin-bottom:14px; }
   .dock-empty { color:var(--muted); font-size:13px; padding:16px 0; }
-  /* Comment modal */
   #comment-modal { display:none; position:fixed; inset:0; background:rgba(15,40,80,0.5); z-index:900; align-items:center; justify-content:center; }
   #comment-modal.show { display:flex; }
   .comment-box { background:#fff; border-radius:12px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 40px rgba(0,0,0,0.2); }
@@ -155,7 +153,7 @@
         <div class="container-table-wrap">
           <table>
             <thead><tr><th>Container #</th><th>Client</th><th>Carrier</th><th>Cartons</th><th>SKUs</th><th>Handled By</th><th>Status</th></tr></thead>
-            <tbody id="container-tbody"><tr><td colspan="6" class="no-data">Loading…</td></tr></tbody>
+            <tbody id="container-tbody"><tr><td colspan="7" class="no-data">Loading…</td></tr></tbody>
           </table>
         </div>
         <div class="table-footer" id="table-footer" style="display:none">
@@ -208,230 +206,307 @@ var C_DATE_PUT  = 18;  // DATE PUTAWAY
 var byDate = {};
 var datesWithData = new Set();
 var rawRecords = [];
-var NOW = new Date(); NOW.setHours(0,0,0,0);
-var TODAY_STR = ds(NOW);
-var TMR_STR   = ds(addDays(NOW,1));
+
+// ✅ FIX: Use local date parts only — avoids UTC timezone shift bug
+var _now = new Date();
+var NOW  = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate()); // local midnight, no UTC shift
+var TODAY_STR = localDateStr(NOW);
+var TMR_STR   = localDateStr(addDays(NOW, 1));
 var calYear = NOW.getFullYear(), calMonth = NOW.getMonth();
 var selectedDate = TODAY_STR;
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
-function ds(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-function pad(n){ return String(n).padStart(2,'0'); }
-function addDays(d,n){ var r=new Date(d); r.setDate(r.getDate()+n); return r; }
-function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function sumCartons(rows){ return rows.reduce(function(s,r){ return s+(isNaN(r.cartons)?0:Number(r.cartons)); },0); }
-function sumSKUs(rows){ return rows.reduce(function(s,r){ var n=parseInt(r.skus); return s+(isNaN(n)?0:n); },0); }
 
-function handlerBadge(l){
-  if(!l||l==='-'||!l.trim()) return '<span style="color:#aaa">—</span>';
-  var u=l.toUpperCase();
-  var bg=u.includes('MHE')?'#e0f2e9':u.includes('ECM')?'#f0e0fb':'#fff3cd';
-  var cl=u.includes('MHE')?'#1a8f4e':u.includes('ECM')?'#6a1a9a':'#8a5a00';
+// ✅ FIX: Always build YYYY-MM-DD from local date parts (not UTC)
+function localDateStr(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function addDays(d, n) { var r = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); return r; }
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function sumCartons(rows) { return rows.reduce(function(s,r){ return s + (isNaN(r.cartons) ? 0 : Number(r.cartons)); }, 0); }
+function sumSKUs(rows) { return rows.reduce(function(s,r){ var n=parseInt(r.skus); return s+(isNaN(n)?0:n); }, 0); }
+
+function handlerBadge(l) {
+  if (!l || l === '-' || !l.trim()) return '<span style="color:#aaa">—</span>';
+  var u = l.toUpperCase();
+  var bg = u.includes('MHE') ? '#e0f2e9' : u.includes('ECM') ? '#f0e0fb' : '#fff3cd';
+  var cl = u.includes('MHE') ? '#1a8f4e' : u.includes('ECM') ? '#6a1a9a' : '#8a5a00';
   return '<span style="background:'+bg+';color:'+cl+';padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;">'+esc(l)+'</span>';
 }
-function skuBadge(s){
-  if(!s||s==='-'||!s.trim()) return '<span style="color:#aaa">—</span>';
+function skuBadge(s) {
+  if (!s || s === '-' || !s.trim()) return '<span style="color:#aaa">—</span>';
   return '<span class="badge badge-sku">'+esc(s)+'</span>';
 }
-function extractCartons(raw){
-  if(!raw) return null;
-  raw=raw.trim();
-  var inner=raw.match(/\((\d[\d,]*)\s*ctns?\)/i);
-  if(inner) return parseInt(inner[1].replace(/,/g,''));
-  var lead=raw.match(/^(\d[\d,]*)/);
-  if(lead) return parseInt(lead[1].replace(/,/g,''));
+function extractCartons(raw) {
+  if (!raw) return null;
+  raw = raw.trim();
+  var inner = raw.match(/\((\d[\d,]*)\s*ctns?\)/i);
+  if (inner) return parseInt(inner[1].replace(/,/g,''));
+  var lead = raw.match(/^(\d[\d,]*)/);
+  if (lead) return parseInt(lead[1].replace(/,/g,''));
   return null;
 }
-function detectType(raw){
-  if(!raw) return 'unknown';
-  var u=raw.toUpperCase();
-  if(u.includes('LOOSE')||u.includes('FLOOR')) return 'loose';
-  if(u.includes('CONTAINER')||u.includes('DOOR')||u.includes('PLT')||u.includes('PALLET')) return 'container';
+function detectType(raw) {
+  if (!raw) return 'unknown';
+  var u = raw.toUpperCase();
+  if (u.includes('LOOSE') || u.includes('FLOOR')) return 'loose';
+  if (u.includes('CONTAINER') || u.includes('DOOR') || u.includes('PLT') || u.includes('PALLET')) return 'container';
   return 'unknown';
 }
 
 // ── CSV PARSER ───────────────────────────────────────────────────────────────
-function csvToLines(text){
-  var lines=[],cur='',inQ=false;
-  for(var i=0;i<text.length;i++){
-    var ch=text[i];
-    if(ch==='"'){inQ=!inQ;cur+=ch;}
-    else if((ch==='\n'||ch==='\r')&&!inQ){
-      if(ch==='\r'&&text[i+1]==='\n')i++;
-      lines.push(cur);cur='';
-    }else{cur+=ch;}
+function csvToLines(text) {
+  var lines=[], cur='', inQ=false;
+  for (var i=0; i<text.length; i++) {
+    var ch = text[i];
+    if (ch==='"') { inQ=!inQ; cur+=ch; }
+    else if ((ch==='\n'||ch==='\r') && !inQ) {
+      if (ch==='\r' && text[i+1]==='\n') i++;
+      lines.push(cur); cur='';
+    } else { cur+=ch; }
   }
-  if(cur)lines.push(cur);
+  if (cur) lines.push(cur);
   return lines;
 }
-function splitLine(line){
-  var cells=[],cur='',inQ=false;
-  for(var i=0;i<line.length;i++){
-    var ch=line[i];
-    if(ch==='"'){inQ=!inQ;}
-    else if(ch===','&&!inQ){cells.push(cur);cur='';}
-    else{cur+=ch;}
+
+function splitLine(line) {
+  var cells=[], cur='', inQ=false;
+  for (var i=0; i<line.length; i++) {
+    var ch = line[i];
+    if (ch==='"') { inQ=!inQ; }
+    else if (ch===',' && !inQ) { cells.push(cur); cur=''; }
+    else { cur+=ch; }
   }
   cells.push(cur);
-  return cells.map(function(c){return c.trim().replace(/^"|"$/g,'').replace(/[\r\n]+/g,' ').trim();});
+  return cells.map(function(c){ return c.trim().replace(/^"|"$/g,'').replace(/[\r\n]+/g,' ').trim(); });
 }
-function parseDate(raw){
-  if(!raw)return null;
-  raw=raw.replace(/^["'\s]+|["'\s]+$/g,'').replace(/[\r\n]+/g,' ');
-  if(!raw)return null;
-  raw=raw.replace(/\s+\d{1,2}:\d{2}(:\d{2})?(\s*(AM|PM))?$/i,'').trim();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw;
-  var s=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(s)return s[3]+'-'+pad(s[1])+'-'+pad(s[2]);
-  var m=raw.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{2,4})$/);
-  if(m){
-    var mo={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}[m[2].toLowerCase()];
-    if(mo){var y=m[3];if(y.length===2)y=(parseInt(y)>50?'19':'20')+y;return y+'-'+mo+'-'+pad(m[1]);}
+
+// ✅ FIX: parseDate now always returns local YYYY-MM-DD, never UTC-shifted
+function parseDate(raw) {
+  if (!raw) return null;
+  raw = raw.replace(/^["'\s]+|["'\s]+$/g,'').replace(/[\r\n]+/g,' ').trim();
+  if (!raw) return null;
+
+  // Strip time portion (e.g. "2025-05-01 09:00" or "5/1/2025 9:00 AM")
+  raw = raw.replace(/\s+\d{1,2}:\d{2}(:\d{2})?(\s*(AM|PM))?$/i,'').trim();
+
+  // YYYY-MM-DD → safe: parse as local parts directly
+  var iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    return iso[1]+'-'+iso[2]+'-'+iso[3]; // already correct local string
   }
-  var n=parseInt(raw);
-  if(!isNaN(n)&&n>40000&&n<60000){var d=new Date(1899,11,30);d.setDate(d.getDate()+n);return ds(d);}
+
+  // M/D/YYYY or MM/DD/YYYY
+  var mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return mdy[3]+'-'+pad(parseInt(mdy[1]))+'-'+pad(parseInt(mdy[2]));
+
+  // D-Mon-YY or D-Mon-YYYY
+  var dmy = raw.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{2,4})$/);
+  if (dmy) {
+    var mo = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}[dmy[2].toLowerCase()];
+    if (mo) {
+      var y = dmy[3]; if (y.length===2) y = (parseInt(y)>50?'19':'20')+y;
+      return y+'-'+mo+'-'+pad(parseInt(dmy[1]));
+    }
+  }
+
+  // Excel serial number (e.g. 45747)
+  var n = parseInt(raw);
+  if (!isNaN(n) && n>40000 && n<60000) {
+    // Use local date arithmetic, not new Date() which would be UTC
+    var epoch = new Date(1899, 11, 30); // Dec 30 1899 local
+    var d = new Date(epoch.getFullYear(), epoch.getMonth(), epoch.getDate() + n);
+    return localDateStr(d);
+  }
+
   return null;
 }
-function parseCSV(text){
-  var lines=csvToLines(text);
-  if(lines.length<2)return[];
-  var records=[];
-  for(var i=1;i<lines.length;i++){
-    var cells=splitLine(lines[i]);
-    if(cells.every(function(c){return!c;}))continue;
-    var date=parseDate(cells[C_DATE]||'');
-    if(!date)continue;
-    var rawC=(cells[C_CARTONS]||'').replace(/,/g,'');
-    var cartons=parseFloat(rawC);
-    records.push({date:date,client:cells[C_CLIENT]||'',container:cells[C_CONTAINER]||'',carrier:cells[C_CARRIER]||'',cartons:isNaN(cartons)?'-':cartons,skus:cells[C_SKUS]||'-',lumpers:cells[C_LUMPERS]||'-'});
+
+function parseCSV(text) {
+  var lines = csvToLines(text);
+  if (lines.length < 2) return [];
+  var records = [];
+  for (var i=1; i<lines.length; i++) {
+    var cells = splitLine(lines[i]);
+    if (cells.every(function(c){ return !c; })) continue;
+    var date = parseDate(cells[C_DATE] || '');
+    if (!date) continue;
+    var rawC = (cells[C_CARTONS] || '').replace(/,/g,'');
+    var cartons = parseFloat(rawC);
+    records.push({
+      date:      date,
+      client:    cells[C_CLIENT]    || '',
+      container: cells[C_CONTAINER] || '',
+      carrier:   cells[C_CARRIER]   || '',
+      cartons:   isNaN(cartons) ? '-' : cartons,
+      skus:      cells[C_SKUS]      || '-',
+      lumpers:   cells[C_LUMPERS]   || '-'
+    });
   }
   return records;
 }
 
 // ── LOAD DATA ────────────────────────────────────────────────────────────────
-function loadAll(){
+function loadAll() {
   showLoading(true); hideError();
   document.getElementById('refresh-btn').classList.add('spinning');
-  fetch(SHEET_URL+'&_='+Date.now())
-    .then(function(res){
-      if(!res.ok)throw new Error('HTTP '+res.status);
+  fetch(SHEET_URL + '&_=' + Date.now())
+    .then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.text();
     })
-    .then(function(text){
-      if(!text||text.length<10)throw new Error('Empty response.');
-      // store raw rows for dock planning
-      var lines=csvToLines(text);
-      rawRecords=lines.slice(1).map(function(l){return splitLine(l);}).filter(function(r){return!r.every(function(c){return!c;});});
-      // parse for calendar/table
-      var records=parseCSV(text);
-      byDate={};
-      records.forEach(function(r){if(!byDate[r.date])byDate[r.date]=[];byDate[r.date].push(r);});
-      datesWithData=new Set(Object.keys(byDate));
-      document.getElementById('last-updated').textContent='Last updated: '+new Date().toLocaleTimeString();
+    .then(function(text) {
+      if (!text || text.length < 10) throw new Error('Empty response.');
+      var lines = csvToLines(text);
+      rawRecords = lines.slice(1)
+        .map(function(l){ return splitLine(l); })
+        .filter(function(r){ return !r.every(function(c){ return !c; }); });
+      var records = parseCSV(text);
+      byDate = {};
+      records.forEach(function(r){
+        if (!byDate[r.date]) byDate[r.date] = [];
+        byDate[r.date].push(r);
+      });
+      datesWithData = new Set(Object.keys(byDate));
+      document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
       updateBanners(); renderCalendar(); renderTable(); renderDock();
     })
-    .catch(function(e){
-      showError('Could not load data: '+e.message);
+    .catch(function(e) {
+      showError('Could not load data: ' + e.message);
       console.error(e);
     })
-    .finally(function(){
+    .finally(function() {
       showLoading(false);
       document.getElementById('refresh-btn').classList.remove('spinning');
     });
 }
 
-function showLoading(v){document.getElementById('loading-overlay').classList.toggle('hidden',!v);}
-function showError(msg){var b=document.getElementById('error-banner');b.textContent=msg;b.classList.add('show');}
-function hideError(){document.getElementById('error-banner').classList.remove('show');}
+function showLoading(v) { document.getElementById('loading-overlay').classList.toggle('hidden', !v); }
+function showError(msg) { var b=document.getElementById('error-banner'); b.textContent=msg; b.classList.add('show'); }
+function hideError() { document.getElementById('error-banner').classList.remove('show'); }
 
 // ── BANNERS ───────────────────────────────────────────────────────────────────
-function updateBanners(){
-  var t=byDate[TODAY_STR]||[],m=byDate[TMR_STR]||[];
-  document.getElementById('today-containers').textContent=t.length||'0';
-  document.getElementById('today-cartons').textContent=sumCartons(t).toLocaleString();
-  document.getElementById('today-skus').textContent=sumSKUs(t)||'0';
-  document.getElementById('tmr-containers').textContent=m.length||'0';
-  document.getElementById('tmr-cartons').textContent=sumCartons(m).toLocaleString();
-  document.getElementById('tmr-skus').textContent=sumSKUs(m)||'0';
+function updateBanners() {
+  var t = byDate[TODAY_STR] || [], m = byDate[TMR_STR] || [];
+  document.getElementById('today-containers').textContent = t.length || '0';
+  document.getElementById('today-cartons').textContent    = sumCartons(t).toLocaleString();
+  document.getElementById('today-skus').textContent       = sumSKUs(t) || '0';
+  document.getElementById('tmr-containers').textContent   = m.length || '0';
+  document.getElementById('tmr-cartons').textContent      = sumCartons(m).toLocaleString();
+  document.getElementById('tmr-skus').textContent         = sumSKUs(m) || '0';
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────────────
-var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
-function renderCalendar(){
-  document.getElementById('cal-month-label').textContent=MONTHS[calMonth]+' '+calYear;
-  var grid=document.getElementById('cal-grid');
-  while(grid.children.length>7)grid.removeChild(grid.lastChild);
-  var first=new Date(calYear,calMonth,1).getDay();
-  var days=new Date(calYear,calMonth+1,0).getDate();
-  for(var i=0;i<first;i++){var e=document.createElement('div');e.className='cal-day empty';grid.appendChild(e);}
-  for(var d=1;d<=days;d++){
-    var dstr=calYear+'-'+pad(calMonth+1)+'-'+pad(d);
-    var e=document.createElement('div');
-    e.className='cal-day';e.textContent=d;
-    if(dstr===TODAY_STR)e.classList.add('today-date');
-    if(dstr===selectedDate)e.classList.add('selected');
-    if(datesWithData.has(dstr))e.classList.add('has-data');
-    (function(ds){e.addEventListener('click',function(){selectedDate=ds;renderCalendar();renderTable();});})(dstr);
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderCalendar() {
+  document.getElementById('cal-month-label').textContent = MONTHS[calMonth] + ' ' + calYear;
+  var grid = document.getElementById('cal-grid');
+  while (grid.children.length > 7) grid.removeChild(grid.lastChild);
+  var first = new Date(calYear, calMonth, 1).getDay();
+  var days  = new Date(calYear, calMonth + 1, 0).getDate();
+  for (var i=0; i<first; i++) {
+    var e = document.createElement('div'); e.className='cal-day empty'; grid.appendChild(e);
+  }
+  for (var d=1; d<=days; d++) {
+    // ✅ FIX: build date string from parts, not new Date().toISOString()
+    var dstr = calYear + '-' + pad(calMonth + 1) + '-' + pad(d);
+    var e = document.createElement('div');
+    e.className = 'cal-day'; e.textContent = d;
+    if (dstr === TODAY_STR)    e.classList.add('today-date');
+    if (dstr === selectedDate) e.classList.add('selected');
+    if (datesWithData.has(dstr)) e.classList.add('has-data');
+    (function(ds){ e.addEventListener('click', function(){ selectedDate=ds; renderCalendar(); renderTable(); }); })(dstr);
     grid.appendChild(e);
   }
 }
-document.getElementById('prev-month').addEventListener('click',function(){if(--calMonth<0){calMonth=11;calYear--;}renderCalendar();});
-document.getElementById('next-month').addEventListener('click',function(){if(++calMonth>11){calMonth=0;calYear++;}renderCalendar();});
+
+document.getElementById('prev-month').addEventListener('click', function(){
+  if (--calMonth < 0) { calMonth=11; calYear--; } renderCalendar();
+});
+document.getElementById('next-month').addEventListener('click', function(){
+  if (++calMonth > 11) { calMonth=0; calYear++; } renderCalendar();
+});
 
 // ── TABLE ─────────────────────────────────────────────────────────────────────
-function renderTable(){
-  var rows=byDate[selectedDate]||[];
-  var tbody=document.getElementById('container-tbody');
-  var footer=document.getElementById('table-footer');
-  var parts=selectedDate.split('-');
-  document.getElementById('selected-date-label').textContent=new Date(+parts[0],+parts[1]-1,+parts[2]).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  if(!rows.length){tbody.innerHTML='<tr><td colspan="7" class="no-data">No containers scheduled for this date</td></tr>';footer.style.display='none';return;}
-  // Build a lookup of raw rows by container number for status
-  var rawByContainer={};
-  rawRecords.forEach(function(row){
-    var cont=(row[C_CONTAINER]||'').toUpperCase().trim();
-    if(cont) rawByContainer[cont]=row;
-  });
+function renderTable() {
+  var rows   = byDate[selectedDate] || [];
+  var tbody  = document.getElementById('container-tbody');
+  var footer = document.getElementById('table-footer');
 
-  tbody.innerHTML=rows.map(function(r){
-    var raw=rawByContainer[r.container.toUpperCase().trim()]||[];
-    var dateRecv = raw.length ? parseDate(raw[C_DATE_RECV]||'') : null;
-    var datePut  = raw.length ? parseDate(raw[C_DATE_PUT] ||'') : null;
-    var statusCell;
-    if(datePut){
-      statusCell='<span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#10003; Completed</span>';
-    } else if(dateRecv){
-      statusCell='<span style="background:#cce5ff;color:#004085;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#128229; Received</span>';
-    } else {
-      statusCell='<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#9881; Working</span>';
-    }
-    return '<tr><td class="mono">'+esc(r.container.toUpperCase())+'</td><td class="client-col">'+esc(r.client)+'</td><td>'+esc(r.carrier)+'</td><td><strong>'+(typeof r.cartons==='number'?r.cartons.toLocaleString():r.cartons)+'</strong></td><td>'+skuBadge(r.skus)+'</td><td>'+handlerBadge(r.lumpers)+'</td><td>'+statusCell+'</td></tr>';
-  }).join('');
-  footer.style.display='flex';
-  document.getElementById('foot-containers').textContent=rows.length;
-  document.getElementById('foot-cartons').textContent=sumCartons(rows).toLocaleString();
-  document.getElementById('foot-skus').textContent=sumSKUs(rows)||'—';
-  var lmp=[...new Set(rows.map(function(r){return r.lumpers;}).filter(function(l){return l&&l!=='-';}))];
-  document.getElementById('foot-lumpers').textContent=lmp.length?lmp.join(', '):'—';
-}
+  // ✅ FIX: build display date from local parts
+  var parts = selectedDate.split('-');
+  var dispDate = new Date(+parts[0], +parts[1]-1, +parts[2])
+    .toLocaleDateString('en-CA', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+  document.getElementById('selected-date-label').textContent = dispDate;
 
-// ── DOCK PLANNING ─────────────────────────────────────────────────────────────
-function renderDock(){
-  var grid=document.getElementById('dock-grid');
-  var dateEl=document.getElementById('dock-date');
-  dateEl.innerHTML='<strong>'+NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</strong>';
-
-  // Filter by DATE DECLARED = today
-  var todayRows=rawRecords.filter(function(row){
-    return parseDate(row[C_DATE_DECL]||'')===TODAY_STR;
-  });
-
-  if(!todayRows.length){
-    grid.innerHTML='<div class="dock-empty">No containers declared for today.</div>';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="no-data">No containers scheduled for this date</td></tr>';
+    footer.style.display = 'none';
     return;
   }
 
-  var thead='<thead><tr style="background:var(--blue-dark);color:#fff;">'
+  var rawByContainer = {};
+  rawRecords.forEach(function(row){
+    var cont = (row[C_CONTAINER] || '').toUpperCase().trim();
+    if (cont) rawByContainer[cont] = row;
+  });
+
+  tbody.innerHTML = rows.map(function(r){
+    var raw      = rawByContainer[r.container.toUpperCase().trim()] || [];
+    var dateRecv = raw.length ? parseDate(raw[C_DATE_RECV] || '') : null;
+    var datePut  = raw.length ? parseDate(raw[C_DATE_PUT]  || '') : null;
+    var statusCell;
+    if (datePut) {
+      statusCell = '<span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#10003; Completed</span>';
+    } else if (dateRecv) {
+      statusCell = '<span style="background:#cce5ff;color:#004085;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#128229; Received</span>';
+    } else {
+      statusCell = '<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">&#9881; Working</span>';
+    }
+    return '<tr>'
+      +'<td class="mono">'+esc(r.container.toUpperCase())+'</td>'
+      +'<td class="client-col">'+esc(r.client)+'</td>'
+      +'<td>'+esc(r.carrier)+'</td>'
+      +'<td><strong>'+(typeof r.cartons==='number' ? r.cartons.toLocaleString() : r.cartons)+'</strong></td>'
+      +'<td>'+skuBadge(r.skus)+'</td>'
+      +'<td>'+handlerBadge(r.lumpers)+'</td>'
+      +'<td>'+statusCell+'</td>'
+      +'</tr>';
+  }).join('');
+
+  footer.style.display = 'flex';
+  document.getElementById('foot-containers').textContent = rows.length;
+  document.getElementById('foot-cartons').textContent    = sumCartons(rows).toLocaleString();
+  document.getElementById('foot-skus').textContent       = sumSKUs(rows) || '—';
+  var lmp = [...new Set(rows.map(function(r){ return r.lumpers; }).filter(function(l){ return l && l!=='-'; }))];
+  document.getElementById('foot-lumpers').textContent    = lmp.length ? lmp.join(', ') : '—';
+}
+
+// ── DOCK PLANNING ─────────────────────────────────────────────────────────────
+function renderDock() {
+  var grid   = document.getElementById('dock-grid');
+  var dateEl = document.getElementById('dock-date');
+
+  // ✅ FIX: display date from local parts
+  var parts = TODAY_STR.split('-');
+  var dispDate = new Date(+parts[0], +parts[1]-1, +parts[2])
+    .toLocaleDateString('en-CA', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+  dateEl.innerHTML = '<strong>' + dispDate + '</strong>';
+
+  // Filter by DATE DECLARED = today (using timezone-safe parseDate)
+  var todayRows = rawRecords.filter(function(row){
+    return parseDate(row[C_DATE_DECL] || '') === TODAY_STR;
+  });
+
+  if (!todayRows.length) {
+    grid.innerHTML = '<div class="dock-empty">No containers declared for today.</div>';
+    return;
+  }
+
+  var thead = '<thead><tr style="background:var(--blue-dark);color:#fff;">'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Client</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Cartons</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">SKUs</th>'
@@ -440,36 +515,36 @@ function renderDock(){
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Status</th>'
     +'</tr></thead>';
 
-  var tbody='<tbody>'+todayRows.map(function(row){
-    var client    = row[C_CLIENT]    ||'—';
-    var cartonRaw = row[C_CARTONS]   ||'';
-    var skus      = row[C_SKUS]      ||'—';
-    var door      = row[C_DOOR]      ||'—';
-    var lumper    = row[C_LUMPERS]   ||'—';
-    var notes     = row[C_NOTES]     ||'';
+  var tbody = '<tbody>' + todayRows.map(function(row){
+    var client    = row[C_CLIENT]  || '—';
+    var cartonRaw = row[C_CARTONS] || '';
+    var skus      = row[C_SKUS]    || '—';
+    var door      = row[C_DOOR]    || '—';
+    var lumper    = row[C_LUMPERS] || '—';
+    var notes     = row[C_NOTES]   || '';
 
-    // Status logic
-    var dateRecv  = parseDate(row[C_DATE_RECV]||'');
-    var datePut   = parseDate(row[C_DATE_PUT] ||'');
+    var dateRecv = parseDate(row[C_DATE_RECV] || '');
+    var datePut  = parseDate(row[C_DATE_PUT]  || '');
     var statusCell;
-    if(datePut){
-      statusCell='<span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Completed</span>';
-    } else if(dateRecv){
-      statusCell='<span style="background:#cce5ff;color:#004085;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">📥 Received</span>';
+    if (datePut) {
+      statusCell = '<span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Completed</span>';
+    } else if (dateRecv) {
+      statusCell = '<span style="background:#cce5ff;color:#004085;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">📥 Received</span>';
     } else {
-      statusCell='<span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚙️ Working</span>';
+      statusCell = '<span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚙️ Working</span>';
     }
 
-    var cartons   = extractCartons(cartonRaw);
-    var ctnsDisp  = cartons!==null ? cartons.toLocaleString() : (cartonRaw||'—');
+    var cartons  = extractCartons(cartonRaw);
+    var ctnsDisp = cartons !== null ? cartons.toLocaleString() : (cartonRaw || '—');
+    var type     = detectType(cartonRaw);
+    var typeLabel= type==='container' ? '🚢 Container' : type==='loose' ? '📦 Loose' : '';
+    var typeBadge= typeLabel ? ('<span style="margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--blue-light);color:var(--blue);">'+typeLabel+'</span>') : '';
 
-    var type      = detectType(cartonRaw);
-    var typeLabel = type==='container'?'🚢 Container':type==='loose'?'📦 Loose':'';
-    var typeBadge = typeLabel?('<span style="margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--blue-light);color:var(--blue);">'+typeLabel+'</span>'):'';
-
-    var skuCell   = (skus&&skus!=='-'&&skus!=='—')?('<span class="badge badge-sku">'+esc(skus)+'</span>'):'<span style="color:#aaa">—</span>';
-    var doorCell  = (door&&door!=='-'&&door!=='—')?('<span style="font-family:monospace;color:var(--blue-dark);">'+esc(door)+'</span>'):'<span style="color:#aaa">—</span>';
-    var commentBtn= (notes&&notes.trim())?('<button onclick="openModal(\''+esc(client).replace(/'/g,"\\'")+"','"+notes.replace(/'/g,"\\'").replace(/\n/g,' ')+'\')" style="margin-top:4px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--blue);cursor:pointer;width:100%;">💬 Comments</button>'):'';
+    var skuCell  = (skus && skus!=='-' && skus!=='—') ? ('<span class="badge badge-sku">'+esc(skus)+'</span>') : '<span style="color:#aaa">—</span>';
+    var doorCell = (door && door!=='-' && door!=='—') ? ('<span style="font-family:monospace;color:var(--blue-dark);">'+esc(door)+'</span>') : '<span style="color:#aaa">—</span>';
+    var commentBtn = (notes && notes.trim())
+      ? ('<button onclick="openModal(\''+esc(client).replace(/'/g,"\\'")+"','"+notes.replace(/'/g,"\\'").replace(/\n/g,' ')+'\')" style="margin-top:4px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--blue);cursor:pointer;width:100%;">💬 Comments</button>')
+      : '';
 
     return '<tr style="border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--blue-light)\'" onmouseout="this.style.background=\'\'">'
       +'<td style="padding:8px 10px;font-weight:600;color:var(--blue-dark);">'+esc(client)+'</td>'
@@ -479,24 +554,28 @@ function renderDock(){
       +'<td style="padding:8px 10px;">'+handlerBadge(lumper)+commentBtn+'</td>'
       +'<td style="padding:8px 10px;">'+statusCell+'</td>'
       +'</tr>';
-  }).join('')+'</tbody>';
+  }).join('') + '</tbody>';
 
-  grid.innerHTML='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+thead+tbody+'</table></div>';
+  grid.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+thead+tbody+'</table></div>';
 }
 
 // ── MODAL ─────────────────────────────────────────────────────────────────────
-function openModal(client,comment){
-  document.getElementById('modal-client').textContent=client;
-  document.getElementById('modal-comment').textContent=comment||'No comments.';
+function openModal(client, comment) {
+  document.getElementById('modal-client').textContent  = client;
+  document.getElementById('modal-comment').textContent = comment || 'No comments.';
   document.getElementById('comment-modal').classList.add('show');
 }
-function closeModal(){document.getElementById('comment-modal').classList.remove('show');}
-document.getElementById('comment-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+function closeModal() { document.getElementById('comment-modal').classList.remove('show'); }
+document.getElementById('comment-modal').addEventListener('click', function(e){ if(e.target===this) closeModal(); });
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-document.getElementById('header-date').textContent=NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+// ✅ FIX: header date also uses local parts
+var headerParts = TODAY_STR.split('-');
+document.getElementById('header-date').textContent = new Date(+headerParts[0], +headerParts[1]-1, +headerParts[2])
+  .toLocaleDateString('en-CA', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
 loadAll();
-setInterval(loadAll,5*60*1000);
+setInterval(loadAll, 5 * 60 * 1000);
 </script>
 </body>
 </html>
