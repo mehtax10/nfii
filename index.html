@@ -155,7 +155,7 @@
         <div class="container-table-wrap">
           <table>
             <thead><tr><th>Container #</th><th>Client</th><th>Carrier</th><th>Cartons</th><th>SKUs</th><th>Handled By</th><th>Status</th></tr></thead>
-            <tbody id="container-tbody"><tr><td colspan="7" class="no-data">Loading…</td></tr></tbody>
+            <tbody id="container-tbody"><tr><td colspan="6" class="no-data">Loading…</td></tr></tbody>
           </table>
         </div>
         <div class="table-footer" id="table-footer" style="display:none">
@@ -187,21 +187,10 @@
 </div>
 
 <script>
-// ── CONFIG (obfuscated) ───────────────────────────────────────────────────────
-// The sheet URL is split and assembled at runtime to avoid plain-text exposure
-// in View Source. Note: determined users CAN still find it via DevTools Network
-// tab. For true security, route requests through a backend proxy.
-(function(){
-  var _p = [
-    'aHR0cHM6Ly9kb2NzLmdvb2dsZS5jb20vc3ByZWFkc2hlZXRzL2QvZS8',
-    'MlBBQ1gtMXZUNGV6ZzJKc3lDTWxZZEVDc29WOEUtLVVRTVAzSTNaN2Vhdjzo',
-    'WlpdkwwbHFNX0hJd1VYMXdzSGdwU1lsazRNRlhYU2xvXzdDaHZaZU4vcHViP',
-    'W91dHB1dD1jc3Y='
-  ];
-  window.__SU = atob(_p.join('').replace(/\s/g,''));
-})();
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT4ezg2JsyCMlYdECsoV8E7--UQMP3I3Z7eav6hZ2vL0lqM_HIwUX1wsHgpSYlk4MFXXSlo_7ChvZeN/pub?output=csv';
 
-// ── Column indices (0-based) — Sheet 1
+// Column indices (0-based) — Sheet 1
 var C_CLIENT    = 0;
 var C_CONTAINER = 1;
 var C_CARRIER   = 5;
@@ -324,15 +313,17 @@ function parseCSV(text){
 function loadAll(){
   showLoading(true); hideError();
   document.getElementById('refresh-btn').classList.add('spinning');
-  fetch(window.__SU+'&_='+Date.now())
+  fetch(SHEET_URL+'&_='+Date.now())
     .then(function(res){
       if(!res.ok)throw new Error('HTTP '+res.status);
       return res.text();
     })
     .then(function(text){
       if(!text||text.length<10)throw new Error('Empty response.');
+      // store raw rows for dock planning
       var lines=csvToLines(text);
       rawRecords=lines.slice(1).map(function(l){return splitLine(l);}).filter(function(r){return!r.every(function(c){return!c;});});
+      // parse for calendar/table
       var records=parseCSV(text);
       byDate={};
       records.forEach(function(r){if(!byDate[r.date])byDate[r.date]=[];byDate[r.date].push(r);});
@@ -396,6 +387,7 @@ function renderTable(){
   var parts=selectedDate.split('-');
   document.getElementById('selected-date-label').textContent=new Date(+parts[0],+parts[1]-1,+parts[2]).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   if(!rows.length){tbody.innerHTML='<tr><td colspan="7" class="no-data">No containers scheduled for this date</td></tr>';footer.style.display='none';return;}
+  // Build a lookup of raw rows by container number for status
   var rawByContainer={};
   rawRecords.forEach(function(row){
     var cont=(row[C_CONTAINER]||'').toUpperCase().trim();
@@ -430,6 +422,7 @@ function renderDock(){
   var dateEl=document.getElementById('dock-date');
   dateEl.innerHTML='<strong>'+NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</strong>';
 
+  // Filter by DATE DECLARED = today
   var todayRows=rawRecords.filter(function(row){
     return parseDate(row[C_DATE_DECL]||'')===TODAY_STR;
   });
@@ -440,7 +433,6 @@ function renderDock(){
   }
 
   var thead='<thead><tr style="background:var(--blue-dark);color:#fff;">'
-    +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Container #</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Client</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Cartons</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">SKUs</th>'
@@ -450,7 +442,6 @@ function renderDock(){
     +'</tr></thead>';
 
   var tbody='<tbody>'+todayRows.map(function(row){
-    var container = (row[C_CONTAINER]||'—').toUpperCase();
     var client    = row[C_CLIENT]    ||'—';
     var cartonRaw = row[C_CARTONS]   ||'';
     var skus      = row[C_SKUS]      ||'—';
@@ -458,6 +449,7 @@ function renderDock(){
     var lumper    = row[C_LUMPERS]   ||'—';
     var notes     = row[C_NOTES]     ||'';
 
+    // Status logic
     var dateRecv  = parseDate(row[C_DATE_RECV]||'');
     var datePut   = parseDate(row[C_DATE_PUT] ||'');
     var statusCell;
@@ -481,7 +473,6 @@ function renderDock(){
     var commentBtn= (notes&&notes.trim())?('<button onclick="openModal(\''+esc(client).replace(/'/g,"\\'")+"','"+notes.replace(/'/g,"\\'").replace(/\n/g,' ')+'\')" style="margin-top:4px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--blue);cursor:pointer;width:100%;">💬 Comments</button>'):'';
 
     return '<tr style="border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--blue-light)\'" onmouseout="this.style.background=\'\'">'
-      +'<td style="padding:8px 10px;font-family:monospace;font-size:11.5px;font-weight:700;color:var(--blue-dark);">'+esc(container)+'</td>'
       +'<td style="padding:8px 10px;font-weight:600;color:var(--blue-dark);">'+esc(client)+'</td>'
       +'<td style="padding:8px 10px;"><strong>'+esc(String(ctnsDisp))+'</strong> ctns'+typeBadge+'</td>'
       +'<td style="padding:8px 10px;">'+skuCell+'</td>'
