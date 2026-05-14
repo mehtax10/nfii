@@ -77,12 +77,10 @@
   .no-data { text-align:center; color:var(--muted); padding:24px; font-size:14px; }
   .table-footer { display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--muted); font-weight:500; flex-wrap:wrap; }
   .table-footer strong { color:var(--text); }
-  /* Dock Planning */
   .dock-section { background:var(--card-bg); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px; margin-bottom:14px; }
   .dock-heading { font-family:'Barlow Condensed',sans-serif; font-size:20px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:var(--blue-dark); margin-bottom:4px; }
   .dock-date { font-size:13px; font-weight:700; color:var(--orange); margin-bottom:14px; }
   .dock-empty { color:var(--muted); font-size:13px; padding:16px 0; }
-  /* Comment modal */
   #comment-modal { display:none; position:fixed; inset:0; background:rgba(15,40,80,0.5); z-index:900; align-items:center; justify-content:center; }
   #comment-modal.show { display:flex; }
   .comment-box { background:#fff; border-radius:12px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 40px rgba(0,0,0,0.2); }
@@ -168,7 +166,6 @@
     </div>
   </div>
 
-  <!-- DOCK PLANNING -->
   <div class="dock-section">
     <div class="dock-heading">🚢 Dock Planning</div>
     <div class="dock-date" id="dock-date">—</div>
@@ -176,7 +173,6 @@
   </div>
 </div>
 
-<!-- Comment Modal -->
 <div id="comment-modal">
   <div class="comment-box">
     <h3 id="modal-client">—</h3>
@@ -187,22 +183,26 @@
 </div>
 
 <script>
-// ── CONFIG ───────────────────────────────────────────────────────────────────
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT4ezg2JsyCMlYdECsoV8E7--UQMP3I3Z7eav6hZ2vL0lqM_HIwUX1wsHgpSYlk4MFXXSlo_7ChvZeN/pub?output=csv';
+// ── ENCRYPTED CONFIG ─────────────────────────────────────────────────────────
+// The Google Sheets URL is XOR-encrypted. Do not edit these values.
+var _ENC = '211a161f06544b6b051c0b411e555a26090e0a5b0d0b294e0018405553513a06070a011d4b204e16470060737611435319215a013e064122414971782537062a361d0b1259365f1f1d6764043e51264634532100055e5a6a0043055e0e1e38312c0d1626300347417d2e1e313619055009272b30615c5d6a7e2d0a192f0b2a6b11060a0d5f4741391b1652161d12';
+var _KEY = 'InboundDash2025';
+function _xd(h,k){var d='';for(var i=0;i<h.length;i+=2){d+=String.fromCharCode(parseInt(h.substr(i,2),16)^k.charCodeAt((i/2)%k.length));}return d;}
+var SHEET_URL = _xd(_ENC, _KEY);
 
-// Column indices (0-based) — Sheet 1
+// ── COLUMN INDICES (0-based) ─────────────────────────────────────────────────
 var C_CLIENT    = 0;
 var C_CONTAINER = 1;
 var C_CARRIER   = 5;
-var C_DATE      = 6;   // APPT DATE & TIME
-var C_CARTONS   = 7;   // CARTONS EXPECTED
+var C_DATE      = 6;
+var C_CARTONS   = 7;
 var C_SKUS      = 9;
-var C_DATE_DECL = 10;  // DATE DECLARED
-var C_LUMPERS   = 11;  // NO OF LUMPERS
-var C_DOOR      = 4;   // DOOR#
-var C_NOTES     = 19;  // NOTES
-var C_DATE_RECV = 17;  // DATE RECEIVED
-var C_DATE_PUT  = 18;  // DATE PUTAWAY
+var C_DATE_DECL = 10;
+var C_LUMPERS   = 11;
+var C_DOOR      = 4;
+var C_NOTES     = 19;
+var C_DATE_RECV = 17;
+var C_DATE_PUT  = 18;
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 var byDate = {};
@@ -320,10 +320,8 @@ function loadAll(){
     })
     .then(function(text){
       if(!text||text.length<10)throw new Error('Empty response.');
-      // store raw rows for dock planning
       var lines=csvToLines(text);
       rawRecords=lines.slice(1).map(function(l){return splitLine(l);}).filter(function(r){return!r.every(function(c){return!c;});});
-      // parse for calendar/table
       var records=parseCSV(text);
       byDate={};
       records.forEach(function(r){if(!byDate[r.date])byDate[r.date]=[];byDate[r.date].push(r);});
@@ -387,13 +385,11 @@ function renderTable(){
   var parts=selectedDate.split('-');
   document.getElementById('selected-date-label').textContent=new Date(+parts[0],+parts[1]-1,+parts[2]).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   if(!rows.length){tbody.innerHTML='<tr><td colspan="7" class="no-data">No containers scheduled for this date</td></tr>';footer.style.display='none';return;}
-  // Build a lookup of raw rows by container number for status
   var rawByContainer={};
   rawRecords.forEach(function(row){
     var cont=(row[C_CONTAINER]||'').toUpperCase().trim();
     if(cont) rawByContainer[cont]=row;
   });
-
   tbody.innerHTML=rows.map(function(r){
     var raw=rawByContainer[r.container.toUpperCase().trim()]||[];
     var dateRecv = raw.length ? parseDate(raw[C_DATE_RECV]||'') : null;
@@ -421,17 +417,13 @@ function renderDock(){
   var grid=document.getElementById('dock-grid');
   var dateEl=document.getElementById('dock-date');
   dateEl.innerHTML='<strong>'+NOW.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</strong>';
-
-  // Filter by DATE DECLARED = today
   var todayRows=rawRecords.filter(function(row){
     return parseDate(row[C_DATE_DECL]||'')===TODAY_STR;
   });
-
   if(!todayRows.length){
     grid.innerHTML='<div class="dock-empty">No containers declared for today.</div>';
     return;
   }
-
   var thead='<thead><tr style="background:var(--blue-dark);color:#fff;">'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Client</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Cartons</th>'
@@ -440,7 +432,6 @@ function renderDock(){
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Handled By</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Status</th>'
     +'</tr></thead>';
-
   var tbody='<tbody>'+todayRows.map(function(row){
     var client    = row[C_CLIENT]    ||'—';
     var cartonRaw = row[C_CARTONS]   ||'';
@@ -448,8 +439,6 @@ function renderDock(){
     var door      = row[C_DOOR]      ||'—';
     var lumper    = row[C_LUMPERS]   ||'—';
     var notes     = row[C_NOTES]     ||'';
-
-    // Status logic
     var dateRecv  = parseDate(row[C_DATE_RECV]||'');
     var datePut   = parseDate(row[C_DATE_PUT] ||'');
     var statusCell;
@@ -460,18 +449,14 @@ function renderDock(){
     } else {
       statusCell='<span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚙️ Working</span>';
     }
-
     var cartons   = extractCartons(cartonRaw);
     var ctnsDisp  = cartons!==null ? cartons.toLocaleString() : (cartonRaw||'—');
-
     var type      = detectType(cartonRaw);
     var typeLabel = type==='container'?'🚢 Container':type==='loose'?'📦 Loose':'';
     var typeBadge = typeLabel?('<span style="margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--blue-light);color:var(--blue);">'+typeLabel+'</span>'):'';
-
     var skuCell   = (skus&&skus!=='-'&&skus!=='—')?('<span class="badge badge-sku">'+esc(skus)+'</span>'):'<span style="color:#aaa">—</span>';
     var doorCell  = (door&&door!=='-'&&door!=='—')?('<span style="font-family:monospace;color:var(--blue-dark);">'+esc(door)+'</span>'):'<span style="color:#aaa">—</span>';
     var commentBtn= (notes&&notes.trim())?('<button onclick="openModal(\''+esc(client).replace(/'/g,"\\'")+"','"+notes.replace(/'/g,"\\'").replace(/\n/g,' ')+'\')" style="margin-top:4px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--blue);cursor:pointer;width:100%;">💬 Comments</button>'):'';
-
     return '<tr style="border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--blue-light)\'" onmouseout="this.style.background=\'\'">'
       +'<td style="padding:8px 10px;font-weight:600;color:var(--blue-dark);">'+esc(client)+'</td>'
       +'<td style="padding:8px 10px;"><strong>'+esc(String(ctnsDisp))+'</strong> ctns'+typeBadge+'</td>'
@@ -481,7 +466,6 @@ function renderDock(){
       +'<td style="padding:8px 10px;">'+statusCell+'</td>'
       +'</tr>';
   }).join('')+'</tbody>';
-
   grid.innerHTML='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+thead+tbody+'</table></div>';
 }
 
