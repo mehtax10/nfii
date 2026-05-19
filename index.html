@@ -153,7 +153,7 @@
         <div class="container-table-wrap">
           <table>
             <thead><tr><th>Container #</th><th>Client</th><th>Carrier</th><th>Cartons</th><th>SKUs</th><th>Handled By</th><th>Status</th></tr></thead>
-            <tbody id="container-tbody"><tr><td colspan="6" class="no-data">Loading…</td></tr></tbody>
+            <tbody id="container-tbody"><tr><td colspan="7" class="no-data">Loading…</td></tr></tbody>
           </table>
         </div>
         <div class="table-footer" id="table-footer" style="display:none">
@@ -184,7 +184,6 @@
 
 <script>
 // ── ENCRYPTED CONFIG ─────────────────────────────────────────────────────────
-// The Google Sheets URL is XOR-encrypted. Do not edit these values.
 var _ENC = '211a161f06544b6b051c0b411e555a26090e0a5b0d0b294e0018405553513a06070a011d4b204e16470060737611435319215a013e064122414971782537062a361d0b1259365f1f1d6764043e51264634532100055e5a6a0043055e0e1e38312c0d1626300347417d2e1e313619055009272b30615c5d6a7e2d0a192f0b2a6b11060a0d5f4741391b1652161d12';
 var _KEY = 'InboundDash2025';
 function _xd(h,k){var d='';for(var i=0;i<h.length;i+=2){d+=String.fromCharCode(parseInt(h.substr(i,2),16)^k.charCodeAt((i/2)%k.length));}return d;}
@@ -425,6 +424,7 @@ function renderDock(){
     return;
   }
   var thead='<thead><tr style="background:var(--blue-dark);color:#fff;">'
+    +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Container #</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Client</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Cartons</th>'
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">SKUs</th>'
@@ -433,6 +433,7 @@ function renderDock(){
     +'<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Status</th>'
     +'</tr></thead>';
   var tbody='<tbody>'+todayRows.map(function(row){
+    var container = row[C_CONTAINER] ||'—';
     var client    = row[C_CLIENT]    ||'—';
     var cartonRaw = row[C_CARTONS]   ||'';
     var skus      = row[C_SKUS]      ||'—';
@@ -458,6 +459,7 @@ function renderDock(){
     var doorCell  = (door&&door!=='-'&&door!=='—')?('<span style="font-family:monospace;color:var(--blue-dark);">'+esc(door)+'</span>'):'<span style="color:#aaa">—</span>';
     var commentBtn= (notes&&notes.trim())?('<button onclick="openModal(\''+esc(client).replace(/'/g,"\\'")+"','"+notes.replace(/'/g,"\\'").replace(/\n/g,' ')+'\')" style="margin-top:4px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--blue);cursor:pointer;width:100%;">💬 Comments</button>'):'';
     return '<tr style="border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--blue-light)\'" onmouseout="this.style.background=\'\'">'
+      +'<td style="padding:8px 10px;font-family:monospace;font-size:11.5px;color:var(--blue-dark);font-weight:600;">'+esc(container.toUpperCase())+'</td>'
       +'<td style="padding:8px 10px;font-weight:600;color:var(--blue-dark);">'+esc(client)+'</td>'
       +'<td style="padding:8px 10px;"><strong>'+esc(String(ctnsDisp))+'</strong> ctns'+typeBadge+'</td>'
       +'<td style="padding:8px 10px;">'+skuCell+'</td>'
